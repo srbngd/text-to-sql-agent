@@ -26,12 +26,11 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
     
-    /* Global reset & typography */
     * {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     
-    /* Hide Streamlit default chrome & deploy button */
+    /* Hide Streamlit default header & deploy button */
     header[data-testid="stHeader"] {
         display: none !important;
     }
@@ -39,7 +38,7 @@ st.markdown("""
     footer {visibility: hidden;}
     .stDeployButton {display: none;}
     
-    /* App background & layout */
+    /* App background */
     .stApp {
         background-color: #0b0d11;
         color: #e4e4e7;
@@ -47,12 +46,12 @@ st.markdown("""
     
     /* Main container */
     .block-container {
-        padding-top: 2.5rem;
+        padding-top: 2rem;
         padding-bottom: 5rem;
-        max-width: 860px;
+        max-width: 880px;
     }
     
-    /* Sidebar styling */
+    /* Sidebar */
     section[data-testid="stSidebar"] {
         background-color: #0f1217;
         border-right: 1px solid #1e222b;
@@ -64,7 +63,6 @@ st.markdown("""
         padding-right: 1.25rem;
     }
     
-    /* Sidebar header */
     .sidebar-label {
         font-size: 11px;
         font-weight: 600;
@@ -105,13 +103,12 @@ st.markdown("""
         color: #f4f4f5;
     }
     
-    .source-detail {
+    .source-meta {
         font-size: 12px;
         color: #71717a;
         padding-left: 15px;
     }
     
-    /* Table pills in sidebar */
     .table-badge {
         display: inline-block;
         background: #181c25;
@@ -136,10 +133,9 @@ st.markdown("""
     .app-subtitle {
         font-size: 14px;
         color: #71717a;
-        margin: 0 0 28px 0;
+        margin: 0 0 24px 0;
     }
     
-    /* Section label */
     .section-label {
         font-size: 12px;
         font-weight: 600;
@@ -168,11 +164,42 @@ st.markdown("""
         background-color: #1a202c;
         border-color: #3b4252;
         color: #ffffff;
-        transform: none;
-        box-shadow: none;
     }
     
-    /* Secondary utility buttons (like Clear) */
+    /* Attach data popover button */
+    div[data-testid="stPopover"] > button {
+        background-color: #181c26 !important;
+        border: 1px solid #2b3242 !important;
+        border-radius: 8px !important;
+        color: #e2e8f0 !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        padding: 6px 14px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+    }
+    div[data-testid="stPopover"] > button:hover {
+        background-color: #222836 !important;
+        border-color: #3f475c !important;
+        color: #ffffff !important;
+    }
+    
+    /* Attached file badge */
+    .attached-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(56, 189, 248, 0.08);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+        color: #38bdf8;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+    
+    /* Clear button */
     .clear-btn button {
         background: transparent !important;
         border: 1px solid #272d3b !important;
@@ -186,14 +213,12 @@ st.markdown("""
         border-color: #3f3f46 !important;
     }
     
-    /* Chat message area */
     .stChatMessage {
         background-color: transparent !important;
         border: none !important;
         padding: 12px 0 !important;
     }
     
-    /* Code formatting */
     code, pre {
         font-family: 'JetBrains Mono', monospace !important;
         font-size: 12.5px !important;
@@ -202,20 +227,18 @@ st.markdown("""
         border-radius: 6px !important;
     }
     
-    /* Chat input box */
     div[data-testid="stChatInput"] {
         border-radius: 8px;
         border: 1px solid #272d3b;
         background-color: #141820;
     }
-    
     div[data-testid="stChatInput"]:focus-within {
         border-color: #3f4656;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Custom callback handler to reliably capture SQL queries
+# Custom callback to capture SQL
 class SQLInspectorHandler(BaseCallbackHandler):
     def __init__(self):
         self.sql_queries = []
@@ -239,85 +262,68 @@ class SQLInspectorHandler(BaseCallbackHandler):
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Session state setup
+if "custom_db_uri" not in st.session_state:
+    st.session_state["custom_db_uri"] = None
+if "custom_db_label" not in st.session_state:
+    st.session_state["custom_db_label"] = None
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
+
+# Resolve active database URI
+if st.session_state["custom_db_uri"]:
+    active_db_uri = st.session_state["custom_db_uri"]
+    db_display_name = st.session_state["custom_db_label"]
+else:
+    active_db_uri = "sqlite:///enterprise.db"
+    db_display_name = "enterprise.db"
+
 # ----------------- SIDEBAR -----------------
 with st.sidebar:
-    st.markdown('<div class="sidebar-label">Data Source</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-label">Data Connection</div>', unsafe_allow_html=True)
     
-    source_type = st.selectbox(
-        "Data Source Selection",
-        [
-            "Enterprise Warehouse",
-            "Upload SQLite DB",
-            "Upload CSV Files",
-            "Database URI"
-        ],
-        index=0,
-        label_visibility="collapsed"
-    )
+    # Active connection indicator
+    meta_subtext = "Active Database"
+    if active_db_uri == "sqlite:///enterprise.db":
+        meta_subtext = "Default • 10,268 records"
+    elif st.session_state["custom_db_label"]:
+        meta_subtext = "Custom Uploaded Data"
 
-    active_db_uri = None
-    db_display_name = ""
+    st.markdown(f"""
+    <div class="source-card">
+        <div class="source-row">
+            <span class="status-dot"></span>
+            <span class="source-name">{db_display_name}</span>
+        </div>
+        <div class="source-meta">{meta_subtext}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    if source_type == "Enterprise Warehouse":
-        active_db_uri = "sqlite:///enterprise.db"
-        db_display_name = "enterprise.db"
+    if st.session_state["custom_db_uri"]:
+        if st.button("↺ Switch back to Enterprise DB", use_container_width=True):
+            st.session_state["custom_db_uri"] = None
+            st.session_state["custom_db_label"] = None
+            st.session_state["messages"] = []
+            st.rerun()
 
-    elif source_type == "Upload SQLite DB":
-        uploaded_db = st.file_uploader(
-            "SQLite file",
-            type=["db", "sqlite", "sqlite3"],
-            label_visibility="collapsed"
-        )
-        if uploaded_db:
-            dest = os.path.join(UPLOAD_DIR, uploaded_db.name)
-            with open(dest, "wb") as f:
-                f.write(uploaded_db.getbuffer())
-            active_db_uri = f"sqlite:///{dest}"
-            db_display_name = uploaded_db.name
-        else:
-            st.caption("Select a `.db` or `.sqlite` file")
+    # Remote URI connection
+    with st.expander("Connect via Remote URI", expanded=False):
+        uri_input = st.text_input("Database URI", placeholder="postgresql://user:pass@host/db")
+        if st.button("Connect URI", use_container_width=True):
+            if uri_input:
+                st.session_state["custom_db_uri"] = uri_input
+                st.session_state["custom_db_label"] = "Remote Database"
+                st.session_state["messages"] = []
+                st.rerun()
 
-    elif source_type == "Upload CSV Files":
-        uploaded_csvs = st.file_uploader(
-            "CSV files",
-            type=["csv"],
-            accept_multiple_files=True,
-            label_visibility="collapsed"
-        )
-        if uploaded_csvs:
-            csv_db_path = os.path.join(UPLOAD_DIR, "csv_warehouse.db")
-            if os.path.exists(csv_db_path):
-                try:
-                    os.remove(csv_db_path)
-                except Exception:
-                    pass
-            conn = sqlite3.connect(csv_db_path)
-            created_tables = []
-            for f in uploaded_csvs:
-                tname = re.sub(r'[^a-zA-Z0-9_]', '_', os.path.splitext(f.name)[0])
-                df = pd.read_csv(f)
-                df.to_sql(tname, conn, if_exists="replace", index=False)
-                created_tables.append(tname)
-            conn.close()
-            active_db_uri = f"sqlite:///{csv_db_path}"
-            db_display_name = f"CSV Database ({len(created_tables)} tables)"
-        else:
-            st.caption("Select one or more `.csv` files")
-
-    elif source_type == "Database URI":
-        uri = st.text_input("Connection URI", value="sqlite:///enterprise.db", label_visibility="collapsed")
-        if uri:
-            active_db_uri = uri
-            db_display_name = "Remote URI"
-
-    # API Key check
+    # OpenAI Key
     if not os.environ.get("OPENAI_API_KEY"):
         st.markdown('<div class="sidebar-label" style="margin-top:20px;">OpenAI API Key</div>', unsafe_allow_html=True)
         key_input = st.text_input("API Key", type="password", placeholder="sk-...", label_visibility="collapsed")
         if key_input:
             os.environ["OPENAI_API_KEY"] = key_input
 
-# Connect to database & create agent
+# Connect database & load agent
 @st.cache_resource(show_spinner=False)
 def load_db_and_agent(uri: str):
     try:
@@ -333,33 +339,14 @@ def load_db_and_agent(uri: str):
     except Exception as e:
         return None, None, str(e)
 
-db_instance = None
-agent_instance = None
+db_instance, agent_instance, conn_err = load_db_and_agent(active_db_uri)
 
-if active_db_uri:
-    db_instance, agent_instance, conn_err = load_db_and_agent(active_db_uri)
-
+# Render tables in sidebar
 with st.sidebar:
     if conn_err:
         st.error(f"Connection failed: {conn_err}")
     elif db_instance:
         table_names = db_instance.get_usable_table_names()
-        
-        # Calculate approximate row count if enterprise.db
-        meta_subtext = f"{len(table_names)} tables connected"
-        if "enterprise.db" in active_db_uri:
-            meta_subtext = "3 tables · 10,268 records"
-
-        st.markdown(f"""
-        <div class="source-card">
-            <div class="source-row">
-                <span class="status-dot"></span>
-                <span class="source-name">{db_display_name}</span>
-            </div>
-            <div class="source-meta">{meta_subtext}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
         st.markdown('<div class="sidebar-label" style="margin-top:16px;">Tables in Schema</div>', unsafe_allow_html=True)
         badges_html = "".join([f'<span class="table-badge">{t}</span>' for t in table_names])
         st.markdown(badges_html, unsafe_allow_html=True)
@@ -378,15 +365,73 @@ with st.sidebar:
 st.markdown('<h1 class="app-title">Enterprise BI Agent</h1>', unsafe_allow_html=True)
 st.markdown('<p class="app-subtitle">Query structured relational databases using natural language.</p>', unsafe_allow_html=True)
 
-# Track database switch
-if "last_db" not in st.session_state:
-    st.session_state["last_db"] = active_db_uri
-elif st.session_state["last_db"] != active_db_uri:
-    st.session_state["last_db"] = active_db_uri
-    st.session_state["messages"] = []
+# Main action toolbar with Add / Upload Icon Popover
+col_attach, col_status = st.columns([1.3, 4])
 
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []
+with col_attach:
+    with st.popover("＋ Attach Data (.db, .csv)", help="Upload a SQLite database file or CSV spreadsheets"):
+        st.markdown("#### Upload Custom Database")
+        st.caption("Upload a `.db`, `.sqlite`, or one or more `.csv` files to query with SQL.")
+        
+        uploaded_files = st.file_uploader(
+            "Select files",
+            type=["db", "sqlite", "sqlite3", "csv"],
+            accept_multiple_files=True,
+            key="main_uploader",
+            label_visibility="collapsed"
+        )
+        
+        if uploaded_files:
+            # Check if any .db or .sqlite uploaded
+            db_files = [f for f in uploaded_files if f.name.endswith(('.db', '.sqlite', '.sqlite3'))]
+            csv_files = [f for f in uploaded_files if f.name.endswith('.csv')]
+            
+            if db_files:
+                target_db = db_files[0]
+                dest = os.path.join(UPLOAD_DIR, target_db.name)
+                with open(dest, "wb") as f:
+                    f.write(target_db.getbuffer())
+                st.session_state["custom_db_uri"] = f"sqlite:///{dest}"
+                st.session_state["custom_db_label"] = target_db.name
+                st.session_state["messages"] = []
+                st.success(f"Connected to {target_db.name}")
+                st.rerun()
+            elif csv_files:
+                csv_db_path = os.path.join(UPLOAD_DIR, "csv_warehouse.db")
+                if os.path.exists(csv_db_path):
+                    try:
+                        os.remove(csv_db_path)
+                    except Exception:
+                        pass
+                conn = sqlite3.connect(csv_db_path)
+                table_names_created = []
+                for f in csv_files:
+                    tname = re.sub(r'[^a-zA-Z0-9_]', '_', os.path.splitext(f.name)[0])
+                    df = pd.read_csv(f)
+                    df.to_sql(tname, conn, if_exists="replace", index=False)
+                    table_names_created.append(tname)
+                conn.close()
+                st.session_state["custom_db_uri"] = f"sqlite:///{csv_db_path}"
+                st.session_state["custom_db_label"] = f"{', '.join(table_names_created)} (CSV)"
+                st.session_state["messages"] = []
+                st.success(f"Loaded {len(table_names_created)} table(s)")
+                st.rerun()
+
+with col_status:
+    if st.session_state["custom_db_label"]:
+        st.markdown(f"""
+        <div style="padding-top: 4px;">
+            <span class="attached-badge">📎 Attached: {st.session_state['custom_db_label']}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="padding-top: 7px; font-size: 13px; color: #71717a;">
+            Using pre-loaded Enterprise Database (10,000 orders)
+        </div>
+        """, unsafe_allow_html=True)
+
+st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
 
 prompt_to_run = None
 
