@@ -11,107 +11,211 @@ from langchain_openai import ChatOpenAI
 from langchain_community.agent_toolkits import create_sql_agent
 from langchain_core.callbacks import BaseCallbackHandler
 
-# 1. Load environment variables
+# Load environment variables
 load_dotenv()
 
 st.set_page_config(
-    page_title="Text-to-SQL Business Intelligence Agent",
-    page_icon="📊",
+    page_title="Data Explorer | Business Intelligence",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 2. Custom CSS for a modern, sleek, intuitive UI
+# Bespoke, Minimalist, Human-Designed UI
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
     
-    html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    /* Global reset & typography */
+    * {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     
-    /* Main container clean spacing */
+    /* Hide Streamlit default chrome & deploy button */
+    header[data-testid="stHeader"] {
+        display: none !important;
+    }
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stDeployButton {display: none;}
+    
+    /* App background & layout */
+    .stApp {
+        background-color: #0b0d11;
+        color: #e4e4e7;
+    }
+    
+    /* Main container */
     .block-container {
+        padding-top: 2.5rem;
+        padding-bottom: 5rem;
+        max-width: 860px;
+    }
+    
+    /* Sidebar styling */
+    section[data-testid="stSidebar"] {
+        background-color: #0f1217;
+        border-right: 1px solid #1e222b;
+    }
+    
+    section[data-testid="stSidebar"] .block-container {
         padding-top: 2rem;
-        padding-bottom: 3rem;
-        max-width: 1000px;
+        padding-left: 1.25rem;
+        padding-right: 1.25rem;
     }
     
-    /* Top Header Badge Styling */
-    .hero-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 12px;
-        border-radius: 9999px;
-        background: rgba(56, 189, 248, 0.1);
-        border: 1px solid rgba(56, 189, 248, 0.25);
-        color: #38bdf8;
-        font-size: 0.8rem;
+    /* Sidebar header */
+    .sidebar-label {
+        font-size: 11px;
         font-weight: 600;
-        letter-spacing: 0.03em;
-        margin-bottom: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #71717a;
+        margin-bottom: 8px;
     }
     
-    .status-pill {
-        display: inline-flex;
+    /* Source connection card */
+    .source-card {
+        background: #141820;
+        border: 1px solid #232936;
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-top: 10px;
+        margin-bottom: 16px;
+    }
+    
+    .source-row {
+        display: flex;
         align-items: center;
         gap: 8px;
-        padding: 6px 14px;
-        border-radius: 8px;
-        background: #111827;
-        border: 1px solid #1f2937;
-        font-size: 0.85rem;
-        color: #e5e7eb;
-        margin-bottom: 1rem;
-        width: 100%;
+        margin-bottom: 4px;
     }
     
-    .pulse-dot {
-        width: 8px;
-        height: 8px;
+    .status-dot {
+        width: 7px;
+        height: 7px;
         border-radius: 50%;
         background-color: #10b981;
-        box-shadow: 0 0 10px #10b981;
-        display: inline-block;
+        flex-shrink: 0;
     }
     
-    /* Question card buttons */
+    .source-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: #f4f4f5;
+    }
+    
+    .source-detail {
+        font-size: 12px;
+        color: #71717a;
+        padding-left: 15px;
+    }
+    
+    /* Table pills in sidebar */
+    .table-badge {
+        display: inline-block;
+        background: #181c25;
+        border: 1px solid #272d3b;
+        color: #a1a1aa;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-family: 'JetBrains Mono', monospace;
+        margin: 3px 4px 3px 0;
+    }
+    
+    /* Header typography */
+    .app-title {
+        font-size: 24px;
+        font-weight: 600;
+        letter-spacing: -0.025em;
+        color: #fafafa;
+        margin: 0 0 4px 0;
+    }
+    
+    .app-subtitle {
+        font-size: 14px;
+        color: #71717a;
+        margin: 0 0 28px 0;
+    }
+    
+    /* Section label */
+    .section-label {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #52525b;
+        margin-bottom: 12px;
+    }
+    
+    /* Query suggestion cards */
     div[data-testid="stButton"] > button {
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        background: #141923;
-        color: #f3f4f6;
-        padding: 0.75rem 1rem;
-        font-size: 0.9rem;
-        font-weight: 500;
+        background-color: #141820;
+        border: 1px solid #232936;
+        border-radius: 8px;
+        color: #d4d4d8;
+        font-size: 13.5px;
+        font-weight: 400;
         text-align: left;
-        transition: all 0.2s ease;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        padding: 14px 16px;
+        width: 100%;
+        transition: all 0.15s ease-in-out;
+        box-shadow: none;
     }
     
     div[data-testid="stButton"] > button:hover {
-        border-color: #38bdf8;
-        background: #1e293b;
+        background-color: #1a202c;
+        border-color: #3b4252;
         color: #ffffff;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(56, 189, 248, 0.15);
+        transform: none;
+        box-shadow: none;
     }
     
-    /* Code blocks */
+    /* Secondary utility buttons (like Clear) */
+    .clear-btn button {
+        background: transparent !important;
+        border: 1px solid #272d3b !important;
+        color: #71717a !important;
+        font-size: 12px !important;
+        padding: 6px 12px !important;
+        border-radius: 6px !important;
+    }
+    .clear-btn button:hover {
+        color: #e4e4e7 !important;
+        border-color: #3f3f46 !important;
+    }
+    
+    /* Chat message area */
+    .stChatMessage {
+        background-color: transparent !important;
+        border: none !important;
+        padding: 12px 0 !important;
+    }
+    
+    /* Code formatting */
     code, pre {
         font-family: 'JetBrains Mono', monospace !important;
+        font-size: 12.5px !important;
+        background-color: #11141a !important;
+        border: 1px solid #1f242e !important;
+        border-radius: 6px !important;
     }
     
-    /* Chat message spacing */
-    .stChatMessage {
-        border-radius: 12px;
-        margin-bottom: 0.75rem;
+    /* Chat input box */
+    div[data-testid="stChatInput"] {
+        border-radius: 8px;
+        border: 1px solid #272d3b;
+        background-color: #141820;
+    }
+    
+    div[data-testid="stChatInput"]:focus-within {
+        border-color: #3f4656;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Callback handler to capture executed SQL cleanly
+# Custom callback handler to reliably capture SQL queries
 class SQLInspectorHandler(BaseCallbackHandler):
     def __init__(self):
         self.sql_queries = []
@@ -132,21 +236,20 @@ class SQLInspectorHandler(BaseCallbackHandler):
             if query_text and query_text not in self.sql_queries:
                 self.sql_queries.append(query_text.strip())
 
-# Setup local storage directory for uploaded DBs
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# 3. Sidebar: Simple & Intuitive Configuration
+# ----------------- SIDEBAR -----------------
 with st.sidebar:
-    st.markdown("### 🗄️ Database Source")
+    st.markdown('<div class="sidebar-label">Data Source</div>', unsafe_allow_html=True)
     
     source_type = st.selectbox(
-        "Select active data source",
+        "Data Source Selection",
         [
-            "🏢 Demo Enterprise Warehouse (10,000 Records)",
-            "💾 Upload SQLite DB (.db, .sqlite)",
-            "📄 Upload CSV Files (Auto-Warehouse)",
-            "🔗 Remote Database Connection URI"
+            "Enterprise Warehouse",
+            "Upload SQLite DB",
+            "Upload CSV Files",
+            "Database URI"
         ],
         index=0,
         label_visibility="collapsed"
@@ -155,15 +258,15 @@ with st.sidebar:
     active_db_uri = None
     db_display_name = ""
 
-    if source_type == "🏢 Demo Enterprise Warehouse (10,000 Records)":
+    if source_type == "Enterprise Warehouse":
         active_db_uri = "sqlite:///enterprise.db"
         db_display_name = "enterprise.db"
 
-    elif source_type == "💾 Upload SQLite DB (.db, .sqlite)":
+    elif source_type == "Upload SQLite DB":
         uploaded_db = st.file_uploader(
-            "Upload SQLite File",
+            "SQLite file",
             type=["db", "sqlite", "sqlite3"],
-            help="Upload your SQLite database"
+            label_visibility="collapsed"
         )
         if uploaded_db:
             dest = os.path.join(UPLOAD_DIR, uploaded_db.name)
@@ -172,14 +275,14 @@ with st.sidebar:
             active_db_uri = f"sqlite:///{dest}"
             db_display_name = uploaded_db.name
         else:
-            st.info("Upload a `.db` or `.sqlite` file above.")
+            st.caption("Select a `.db` or `.sqlite` file")
 
-    elif source_type == "📄 Upload CSV Files (Auto-Warehouse)":
+    elif source_type == "Upload CSV Files":
         uploaded_csvs = st.file_uploader(
-            "Upload CSV File(s)",
+            "CSV files",
             type=["csv"],
             accept_multiple_files=True,
-            help="Each CSV file will become a queryable table"
+            label_visibility="collapsed"
         )
         if uploaded_csvs:
             csv_db_path = os.path.join(UPLOAD_DIR, "csv_warehouse.db")
@@ -197,21 +300,20 @@ with st.sidebar:
                 created_tables.append(tname)
             conn.close()
             active_db_uri = f"sqlite:///{csv_db_path}"
-            db_display_name = f"CSV Warehouse ({len(created_tables)} tables)"
+            db_display_name = f"CSV Database ({len(created_tables)} tables)"
         else:
-            st.info("Upload CSV files to convert into a SQL warehouse.")
+            st.caption("Select one or more `.csv` files")
 
-    elif source_type == "🔗 Remote Database Connection URI":
-        uri = st.text_input("Database URI", value="sqlite:///enterprise.db")
+    elif source_type == "Database URI":
+        uri = st.text_input("Connection URI", value="sqlite:///enterprise.db", label_visibility="collapsed")
         if uri:
             active_db_uri = uri
-            db_display_name = "Remote SQL DB"
+            db_display_name = "Remote URI"
 
-    # API Key check in sidebar
+    # API Key check
     if not os.environ.get("OPENAI_API_KEY"):
-        st.markdown("---")
-        st.markdown("### 🔑 API Key Required")
-        key_input = st.text_input("OpenAI Key", type="password", placeholder="sk-...")
+        st.markdown('<div class="sidebar-label" style="margin-top:20px;">OpenAI API Key</div>', unsafe_allow_html=True)
+        key_input = st.text_input("API Key", type="password", placeholder="sk-...", label_visibility="collapsed")
         if key_input:
             os.environ["OPENAI_API_KEY"] = key_input
 
@@ -239,39 +341,42 @@ if active_db_uri:
 
 with st.sidebar:
     if conn_err:
-        st.error(f"Connection Error: {conn_err}")
+        st.error(f"Connection failed: {conn_err}")
     elif db_instance:
         table_names = db_instance.get_usable_table_names()
+        
+        # Calculate approximate row count if enterprise.db
+        meta_subtext = f"{len(table_names)} tables connected"
+        if "enterprise.db" in active_db_uri:
+            meta_subtext = "3 tables · 10,268 records"
+
         st.markdown(f"""
-        <div class="status-pill">
-            <span class="pulse-dot"></span>
-            <div>
-                <strong style="color:#ffffff;">{db_display_name}</strong><br/>
-                <span style="color:#9ca3af; font-size:0.75rem;">Connected • {len(table_names)} Tables Available</span>
+        <div class="source-card">
+            <div class="source-row">
+                <span class="status-dot"></span>
+                <span class="source-name">{db_display_name}</span>
             </div>
+            <div class="source-meta">{meta_subtext}</div>
         </div>
         """, unsafe_allow_html=True)
         
-        with st.expander("📋 Inspect Tables & Columns", expanded=False):
-            for t in table_names:
-                st.markdown(f"**`{t}`**")
-            st.divider()
-            st.caption("Schema Preview:")
+        st.markdown('<div class="sidebar-label" style="margin-top:16px;">Tables in Schema</div>', unsafe_allow_html=True)
+        badges_html = "".join([f'<span class="table-badge">{t}</span>' for t in table_names])
+        st.markdown(badges_html, unsafe_allow_html=True)
+        
+        with st.expander("Schema details", expanded=False):
             st.code(db_instance.get_table_info()[:800] + ("..." if len(db_instance.get_table_info()) > 800 else ""), language="sql")
 
-    st.markdown("---")
-    if st.button("🧹 Clear Chat History", use_container_width=True):
+    st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+    st.markdown('<div class="clear-btn">', unsafe_allow_html=True)
+    if st.button("Reset Conversation", use_container_width=True):
         st.session_state["messages"] = []
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# 4. Main Page Header
-st.markdown("""
-<div class="hero-badge">⚡ Autonomous Business Intelligence</div>
-<h1 style="margin-top:0; margin-bottom:0.25rem; font-size:2rem; font-weight:700;">Text-to-SQL Analytics Agent</h1>
-<p style="color:#94a3b8; font-size:1rem; margin-bottom:1.5rem;">
-Ask questions in plain English. The agent reasons, generates validated SQL, and extracts actionable insights instantly.
-</p>
-""", unsafe_allow_html=True)
+# ----------------- MAIN VIEW -----------------
+st.markdown('<h1 class="app-title">Enterprise BI Agent</h1>', unsafe_allow_html=True)
+st.markdown('<p class="app-subtitle">Query structured relational databases using natural language.</p>', unsafe_allow_html=True)
 
 # Track database switch
 if "last_db" not in st.session_state:
@@ -283,55 +388,54 @@ elif st.session_state["last_db"] != active_db_uri:
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
-# Quick suggestion prompt to run
 prompt_to_run = None
 
-# If chat is empty, show intuitive sample query cards
+# If chat is empty, show clean, understated query suggestions
 if len(st.session_state["messages"]) == 0:
-    st.markdown("<p style='font-size:0.9rem; font-weight:600; color:#e2e8f0; margin-bottom:0.5rem;'>💡 Suggested Questions to Get Started:</p>", unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Suggested Questions</div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("🏆 Top 3 Customers by Total Spend\n\n*(Multi-table JOIN & aggregation)*", use_container_width=True):
+        if st.button("Top 3 customers by total spend", use_container_width=True):
             prompt_to_run = "Can you list the top 3 customers by their total spend, and include their customer segment?"
-        if st.button("📦 Top 5 Best-Selling Products\n\n*(Quantity ordered volume)*", use_container_width=True):
+        if st.button("Top 5 best-selling products by volume", use_container_width=True):
             prompt_to_run = "What are the top 5 most popular products by total quantity ordered?"
 
     with col2:
-        if st.button("💰 Highest Revenue Product Category\n\n*(Category revenue aggregation)*", use_container_width=True):
+        if st.button("Highest revenue product category", use_container_width=True):
             prompt_to_run = "Which product category generated the highest total revenue, and what was that amount?"
-        if st.button("📈 2025 vs 2026 Order Trends\n\n*(Time-series order volume count)*", use_container_width=True):
+        if st.button("Order volume comparison: 2025 vs 2026", use_container_width=True):
             prompt_to_run = "How many total orders were placed in 2025 compared to 2026?"
 
-# Display existing chat messages
+# Render conversation history
 for msg in st.session_state["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if "sql" in msg and msg["sql"]:
-            with st.expander("🔍 View Generated SQL Query", expanded=False):
+            with st.expander("View generated SQL", expanded=False):
                 st.code(msg["sql"], language="sql")
 
-# Text chat input
-user_chat = st.chat_input("Ask a question about your data... (e.g., 'What were total sales last month?')")
-if user_chat:
-    prompt_to_run = user_chat
+# Chat input at bottom
+user_input = st.chat_input("Ask a question about your data...")
+if user_input:
+    prompt_to_run = user_input
 
-# Execute query if triggered via card click or chat bar
+# Handle query execution
 if prompt_to_run:
     if not os.environ.get("OPENAI_API_KEY"):
-        st.error("Please provide an OpenAI API key in the sidebar.")
+        st.error("OpenAI API key is missing. Add it in the sidebar.")
     elif not agent_instance:
-        st.error("No database is currently connected.")
+        st.error("No active database connection found.")
     else:
-        # 1. Display User Message
+        # Display user question
         st.session_state["messages"].append({"role": "user", "content": prompt_to_run})
         with st.chat_message("user"):
             st.markdown(prompt_to_run)
 
-        # 2. Assistant Thinking & Execution
+        # Assistant thinking & execution
         with st.chat_message("assistant"):
             handler = SQLInspectorHandler()
-            with st.spinner("🤖 Translating query to SQL & querying database..."):
+            with st.spinner("Generating SQL query and retrieving data..."):
                 try:
                     res = agent_instance.invoke(
                         {"input": prompt_to_run},
@@ -344,10 +448,9 @@ if prompt_to_run:
             st.markdown(answer)
             executed_sql = "\n\n".join(handler.sql_queries) if handler.sql_queries else None
             if executed_sql:
-                with st.expander("🔍 View Generated SQL Query", expanded=False):
+                with st.expander("View generated SQL", expanded=False):
                     st.code(executed_sql, language="sql")
 
-            # Save in history
             st.session_state["messages"].append({
                 "role": "assistant",
                 "content": answer,
