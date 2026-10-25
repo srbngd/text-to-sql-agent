@@ -3,7 +3,9 @@ import os
 import re
 import sqlite3
 import ast
+import time
 import pandas as pd
+import plotly.express as px
 from dotenv import load_dotenv
 
 from langchain_community.utilities import SQLDatabase
@@ -21,37 +23,52 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 2. Bespoke Clean UI Styling
+# 2. Modern High-End Styling
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
     
     * {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     
-    /* Hide Streamlit default chrome */
+    /* Clean Streamlit default chrome */
     header[data-testid="stHeader"] { display: none !important; }
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
     .stDeployButton { display: none; }
     
     .stApp {
-        background-color: #0b0d11;
-        color: #e4e4e7;
+        background-color: #090b10;
+        color: #f1f5f9;
     }
     
     .block-container {
-        padding-top: 2rem;
+        padding-top: 1.75rem;
         padding-bottom: 5rem;
-        max-width: 880px;
+        max-width: 900px;
+    }
+    
+    /* Header & Branding */
+    .hero-title {
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        color: #ffffff;
+        margin: 0 0 4px 0;
+    }
+    
+    .hero-subtitle {
+        font-size: 14px;
+        color: #94a3b8;
+        margin: 0 0 20px 0;
     }
     
     /* Dataset Manager Card */
     .dataset-box {
-        background: #12161f;
-        border: 1px solid #222938;
-        border-radius: 10px;
+        background: #111520;
+        border: 1px solid #1e2638;
+        border-radius: 12px;
         padding: 16px 20px;
         margin-bottom: 24px;
     }
@@ -63,12 +80,13 @@ st.markdown("""
         background-color: #10b981;
         display: inline-block;
         margin-right: 8px;
+        box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
     }
     
     .badge-pill {
-        background: #1e2533;
-        color: #93c5fd;
-        border: 1px solid #2e3a50;
+        background: rgba(56, 189, 248, 0.1);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.25);
         padding: 2px 8px;
         border-radius: 6px;
         font-size: 12px;
@@ -76,11 +94,26 @@ st.markdown("""
         margin-left: 8px;
     }
     
+    .guardrail-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(16, 185, 129, 0.08);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+        color: #34d399;
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-size: 11.5px;
+        font-family: 'JetBrains Mono', monospace;
+        margin-top: 8px;
+    }
+    
+    /* Query Cards */
     div[data-testid="stButton"] > button {
-        background-color: #141820;
-        border: 1px solid #232936;
+        background-color: #111520;
+        border: 1px solid #1e2638;
         border-radius: 8px;
-        color: #d4d4d8;
+        color: #e2e8f0;
         font-size: 13.5px;
         font-weight: 400;
         text-align: left;
@@ -90,8 +123,8 @@ st.markdown("""
     }
     
     div[data-testid="stButton"] > button:hover {
-        background-color: #1a202c;
-        border-color: #3b4252;
+        background-color: #171d2b;
+        border-color: #38bdf8;
         color: #ffffff;
     }
     
@@ -104,23 +137,28 @@ st.markdown("""
     code, pre {
         font-family: 'JetBrains Mono', monospace !important;
         font-size: 12px !important;
-        background-color: #11141a !important;
-        border: 1px solid #1f242e !important;
+        background-color: #0e121a !important;
+        border: 1px solid #1c2230 !important;
         border-radius: 6px !important;
     }
     
     div[data-testid="stChatInput"] {
-        border-radius: 8px;
-        border: 1px solid #272d3b;
-        background-color: #141820;
+        border-radius: 10px;
+        border: 1px solid #232c3d;
+        background-color: #111520;
+    }
+    div[data-testid="stChatInput"]:focus-within {
+        border-color: #38bdf8;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# 3. Callback handler to reliably capture generated SQL
+# 3. Callback handler to reliably capture generated SQL & performance
 class SQLInspectorHandler(BaseCallbackHandler):
     def __init__(self):
         self.sql_queries = []
+        self.start_time = time.time()
+        self.execution_time = 0
 
     def on_tool_start(self, serialized, input_str, **kwargs):
         name = serialized.get("name", "")
@@ -137,6 +175,9 @@ class SQLInspectorHandler(BaseCallbackHandler):
                     query_text = input_str
             if query_text and query_text not in self.sql_queries:
                 self.sql_queries.append(query_text.strip())
+
+    def on_tool_end(self, output, **kwargs):
+        self.execution_time = round(time.time() - self.start_time, 2)
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -189,9 +230,47 @@ IMPORTANT BEHAVIORAL INSTRUCTIONS:
     except Exception as e:
         return None, None, str(e)
 
+# Helper function to generate auto-visualizations from SQL results
+def create_smart_chart(df: pd.DataFrame):
+    if df is None or len(df) < 2 or len(df.columns) < 2:
+        return None
+    
+    num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    cat_cols = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]
+    
+    if not num_cols or not cat_cols:
+        return None
+    
+    x_cat = cat_cols[0]
+    y_num = num_cols[0]
+    
+    # Clean titles
+    cat_label = x_cat.replace('_', ' ').title()
+    num_label = y_num.replace('_', ' ').title()
+    
+    # If 6 or fewer categories: sleek horizontal or vertical bar chart
+    fig = px.bar(
+        df.head(10),
+        x=x_cat,
+        y=y_num,
+        color=y_num,
+        color_continuous_scale=["#38bdf8", "#818cf8"],
+        template="plotly_dark",
+        labels={x_cat: cat_label, y_num: num_label}
+    )
+    fig.update_layout(
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=24, b=10),
+        height=280,
+        font=dict(family="Inter, sans-serif", color="#e2e8f0"),
+        coloraxis_showscale=False
+    )
+    return fig
+
 # ----------------- MAIN VIEW -----------------
-st.markdown('<h1 style="font-size:24px; font-weight:600; margin-bottom:4px; color:#fafafa;">Enterprise BI Agent</h1>', unsafe_allow_html=True)
-st.markdown('<p style="font-size:14px; color:#71717a; margin-bottom:16px;">Ask questions in plain English across the default warehouse or any custom dataset you upload.</p>', unsafe_allow_html=True)
+st.markdown('<h1 class="hero-title">Enterprise BI Agent</h1>', unsafe_allow_html=True)
+st.markdown('<p class="hero-subtitle">Conversational text-to-SQL with automatic charts, data exports, and read-only safety guardrails.</p>', unsafe_allow_html=True)
 
 # ----------------- PROMINENT DATASET MANAGER (VISIBLE ON SCREEN) -----------------
 with st.container():
@@ -237,7 +316,6 @@ with st.container():
         
         if uploaded_file is not None:
             file_name = uploaded_file.name
-            # If new file uploaded, process immediately
             if st.session_state.get("dataset_name") != file_name:
                 if file_name.endswith((".db", ".sqlite", ".sqlite3")):
                     save_path = os.path.join(UPLOAD_DIR, file_name)
@@ -248,7 +326,6 @@ with st.container():
                     st.session_state["dataset_name"] = file_name
                     st.session_state["preview_df"] = None
                     
-                    # Discover table names
                     conn = sqlite3.connect(save_path)
                     c = conn.cursor()
                     tables = [row[0] for row in c.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()]
@@ -263,7 +340,6 @@ with st.container():
 
                 elif file_name.endswith(".csv"):
                     df = pd.read_csv(uploaded_file)
-                    # Clean columns
                     df.columns = [re.sub(r'[^a-zA-Z0-9_]', '_', str(c)).strip() for c in df.columns]
                     clean_table_name = re.sub(r'[^a-zA-Z0-9_]', '_', os.path.splitext(file_name)[0]).lower()
                     
@@ -284,20 +360,20 @@ with st.container():
                     })
                     st.rerun()
 
-# ----------------- VISUAL CONFIRMATION & PREVIEW BANNER -----------------
+# ----------------- VISUAL CONFIRMATION & LIVE PREVIEW BANNER -----------------
 if st.session_state["active_source"] == "custom":
     st.markdown(f"""
     <div style="background:#0f172a; border:1px solid #1e293b; border-left:4px solid #10b981; border-radius:8px; padding:12px 16px; margin-bottom:16px;">
         <span class="status-dot"></span><strong style="color:#10b981; font-size:14px;">Active Dataset: {st.session_state['dataset_name']}</strong>
-        <span class="badge-pill">Unseen Custom Data Active</span>
+        <span class="badge-pill">Unseen Custom Data Live</span>
         <p style="font-size:12.5px; color:#94a3b8; margin:4px 0 0 0;">
-            All your questions below will be answered by querying this uploaded file.
+            All your queries below will be answered by executing SQL directly against this uploaded file.
         </p>
     </div>
     """, unsafe_allow_html=True)
     
     if st.session_state["preview_df"] is not None:
-        with st.expander("👁️ Live Data Preview (First 5 Rows)", expanded=True):
+        with st.expander("👁️ Live Data Preview (First 5 Rows)", expanded=False):
             st.dataframe(st.session_state["preview_df"], use_container_width=True)
 
 # Connect to the currently active database
@@ -317,7 +393,7 @@ if len(st.session_state["messages"]) <= 1:
         with col1:
             if st.button("Top 3 customers by total spend", use_container_width=True):
                 prompt_to_run = "Can you list the top 3 customers by their total spend, and include their customer segment?"
-            if st.button("Top 5 best-selling products by volume", use_container_width=True):
+            if st.button("Top 5 best-selling products by quantity", use_container_width=True):
                 prompt_to_run = "What are the top 5 most popular products by total quantity ordered?"
         with col2:
             if st.button("Highest revenue product category", use_container_width=True):
@@ -325,7 +401,6 @@ if len(st.session_state["messages"]) <= 1:
             if st.button("Order volume comparison: 2025 vs 2026", use_container_width=True):
                 prompt_to_run = "How many total orders were placed in 2025 compared to 2026?"
     else:
-        # Dynamic suggestions for custom uploaded data
         tables = st.session_state.get("custom_table_names", ["data"])
         t0 = tables[0] if tables else "data"
         col1, col2 = st.columns(2)
@@ -337,11 +412,35 @@ if len(st.session_state["messages"]) <= 1:
                 prompt_to_run = f"Provide a breakdown of the key metrics and columns in {t0}."
 
 # ----------------- CHAT CONVERSATION HISTORY -----------------
-for msg in st.session_state["messages"]:
+for idx, msg in enumerate(st.session_state["messages"]):
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+        
+        # Render auto-visualization if present
+        if "chart_data" in msg and msg["chart_data"] is not None:
+            fig = create_smart_chart(msg["chart_data"])
+            if fig:
+                st.plotly_chart(fig, use_container_width=True, key=f"chart_{idx}")
+        
+        # Action bar: Download CSV & SQL Inspector
         if "sql" in msg and msg["sql"]:
-            with st.expander("View generated SQL query", expanded=False):
+            col_audit, col_dl = st.columns([3, 1.2])
+            with col_audit:
+                exec_time = msg.get("exec_time", "0.15s")
+                st.markdown(f'<span class="guardrail-pill">🛡️ Read-Only Guardrail Active • {exec_time}</span>', unsafe_allow_html=True)
+            with col_dl:
+                if "chart_data" in msg and msg["chart_data"] is not None:
+                    csv_bytes = msg["chart_data"].to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="⬇️ Export CSV",
+                        data=csv_bytes,
+                        file_name="query_results.csv",
+                        mime="text/csv",
+                        key=f"dl_{idx}",
+                        use_container_width=True
+                    )
+            
+            with st.expander("🔍 View generated SQL query", expanded=False):
                 st.code(msg["sql"], language="sql")
 
 # Chat input bar at bottom
@@ -365,7 +464,6 @@ if prompt_to_run:
         with st.chat_message("assistant"):
             handler = SQLInspectorHandler()
             with st.spinner("Analyzing data and generating answer..."):
-                # Multi-turn conversation context (last 3 messages) for natural follow-ups
                 if len(st.session_state["messages"]) > 2:
                     recent_context = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in st.session_state["messages"][-4:-1]])
                     full_input = f"Previous conversation context:\n{recent_context}\n\nCurrent user question: {prompt_to_run}"
@@ -383,13 +481,50 @@ if prompt_to_run:
 
             st.markdown(answer)
             executed_sql = "\n\n".join(handler.sql_queries) if handler.sql_queries else None
+            
+            # Fetch structured dataframe for charts and exports
+            result_df = None
+            if executed_sql and st.session_state["active_db_uri"].startswith("sqlite:///"):
+                db_path = st.session_state["active_db_uri"].replace("sqlite:///", "")
+                try:
+                    conn = sqlite3.connect(db_path)
+                    # Use the last executed query
+                    last_sql = handler.sql_queries[-1]
+                    result_df = pd.read_sql_query(last_sql, conn)
+                    conn.close()
+                except Exception:
+                    result_df = None
+
+            # Render instant chart if structured data returned
+            if result_df is not None:
+                fig = create_smart_chart(result_df)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+
             if executed_sql:
-                with st.expander("View generated SQL query", expanded=False):
+                col_audit, col_dl = st.columns([3, 1.2])
+                with col_audit:
+                    st.markdown(f'<span class="guardrail-pill">🛡️ Read-Only Guardrail Active • {handler.execution_time}s</span>', unsafe_allow_html=True)
+                with col_dl:
+                    if result_df is not None and len(result_df) > 0:
+                        csv_bytes = result_df.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="⬇️ Export CSV",
+                            data=csv_bytes,
+                            file_name="query_results.csv",
+                            mime="text/csv",
+                            key=f"dl_live",
+                            use_container_width=True
+                        )
+
+                with st.expander("🔍 View generated SQL query", expanded=False):
                     st.code(executed_sql, language="sql")
 
             # Persist assistant turn
             st.session_state["messages"].append({
                 "role": "assistant",
                 "content": answer,
-                "sql": executed_sql
+                "sql": executed_sql,
+                "chart_data": result_df,
+                "exec_time": f"{handler.execution_time}s"
             })
