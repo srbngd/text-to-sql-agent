@@ -18,10 +18,10 @@ st.set_page_config(
     page_title="Enterprise BI Agent",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# 2. Bespoke Clean Styling
+# 2. Bespoke Clean UI Styling
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -30,7 +30,7 @@ st.markdown("""
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     
-    /* Clean Streamlit chrome */
+    /* Hide Streamlit default chrome */
     header[data-testid="stHeader"] { display: none !important; }
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
@@ -44,21 +44,16 @@ st.markdown("""
     .block-container {
         padding-top: 2rem;
         padding-bottom: 5rem;
-        max-width: 860px;
+        max-width: 880px;
     }
     
-    section[data-testid="stSidebar"] {
-        background-color: #0f1217;
-        border-right: 1px solid #1e222b;
-    }
-    
-    /* Status banner for active dataset */
-    .dataset-banner {
-        background: #131720;
-        border: 1px solid #232a38;
-        border-radius: 8px;
-        padding: 14px 18px;
-        margin-bottom: 20px;
+    /* Dataset Manager Card */
+    .dataset-box {
+        background: #12161f;
+        border: 1px solid #222938;
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin-bottom: 24px;
     }
     
     .status-dot {
@@ -70,7 +65,7 @@ st.markdown("""
         margin-right: 8px;
     }
     
-    .badge {
+    .badge-pill {
         background: #1e2533;
         color: #93c5fd;
         border: 1px solid #2e3a50;
@@ -79,16 +74,6 @@ st.markdown("""
         font-size: 12px;
         font-family: 'JetBrains Mono', monospace;
         margin-left: 8px;
-    }
-    
-    .sidebar-section {
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: #71717a;
-        margin-top: 18px;
-        margin-bottom: 8px;
     }
     
     div[data-testid="stButton"] > button {
@@ -108,18 +93,6 @@ st.markdown("""
         background-color: #1a202c;
         border-color: #3b4252;
         color: #ffffff;
-    }
-    
-    .table-pill {
-        display: inline-block;
-        background: #181c25;
-        border: 1px solid #272d3b;
-        color: #a1a1aa;
-        padding: 3px 8px;
-        border-radius: 5px;
-        font-size: 12px;
-        font-family: 'JetBrains Mono', monospace;
-        margin: 2px 4px 2px 0;
     }
     
     .stChatMessage {
@@ -177,111 +150,33 @@ if "dataset_name" not in st.session_state:
     st.session_state["dataset_name"] = "enterprise.db"
 if "preview_df" not in st.session_state:
     st.session_state["preview_df"] = None
+if "custom_table_names" not in st.session_state:
+    st.session_state["custom_table_names"] = []
 if "messages" not in st.session_state:
     st.session_state["messages"] = [
-        {"role": "assistant", "content": "Hello! I am your Business Intelligence agent. I'm currently connected to the **enterprise.db** database with 10,000 synthetic customer, product, and sales records. Ask me any business question or upload your own dataset to begin!"}
+        {"role": "assistant", "content": "Hello! I am your AI Business Intelligence analyst. I can answer any question about your data—calculating aggregations, discovering trends, or finding specific records. You can explore the pre-loaded 10,000 enterprise orders below, or upload your own CSV or SQLite file at the top!"}
     ]
 
-# 5. Sidebar: File Upload & Controls
-with st.sidebar:
-    st.markdown('<div class="sidebar-section">Active Data Connection</div>', unsafe_allow_html=True)
-    
-    # Switcher button if custom is loaded
-    if st.session_state["active_source"] == "custom":
-        st.markdown(f"""
-        <div style="background:#131720; border:1px solid #232a38; border-radius:6px; padding:10px 12px; margin-bottom:12px;">
-            <span class="status-dot"></span><strong>{st.session_state['dataset_name']}</strong><br/>
-            <span style="font-size:12px; color:#10b981;">Custom Dataset Active</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        if st.button("↺ Switch to Demo Enterprise DB", use_container_width=True):
-            st.session_state["active_source"] = "default"
-            st.session_state["active_db_uri"] = "sqlite:///enterprise.db"
-            st.session_state["dataset_name"] = "enterprise.db"
-            st.session_state["preview_df"] = None
-            st.session_state["messages"] = [
-                {"role": "assistant", "content": "Switched back to the default **enterprise.db** database (10,000 records). What would you like to analyze?"}
-            ]
-            st.rerun()
-    else:
-        st.markdown("""
-        <div style="background:#131720; border:1px solid #232a38; border-radius:6px; padding:10px 12px; margin-bottom:12px;">
-            <span class="status-dot"></span><strong>enterprise.db</strong><br/>
-            <span style="font-size:12px; color:#94a3b8;">Pre-loaded Warehouse (10k Orders)</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown('<div class="sidebar-section">Upload Custom Dataset</div>', unsafe_allow_html=True)
-    uploaded_file = st.file_uploader(
-        "Upload a CSV or SQLite database",
-        type=["csv", "db", "sqlite", "sqlite3"],
-        help="Upload any CSV file or SQLite database to query unseen data"
-    )
-
-    if uploaded_file is not None:
-        file_name = uploaded_file.name
-        # Check if already active to avoid re-triggering
-        if st.session_state["dataset_name"] != file_name:
-            if file_name.endswith((".db", ".sqlite", ".sqlite3")):
-                save_path = os.path.join(UPLOAD_DIR, file_name)
-                with open(save_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-                st.session_state["active_source"] = "custom"
-                st.session_state["active_db_uri"] = f"sqlite:///{save_path}"
-                st.session_state["dataset_name"] = file_name
-                st.session_state["preview_df"] = None
-                st.session_state["messages"].append({
-                    "role": "assistant",
-                    "content": f"✅ Successfully loaded custom database **{file_name}**! The agent has dynamically inspected the schema and is ready to answer questions about this dataset."
-                })
-                st.rerun()
-            elif file_name.endswith(".csv"):
-                df = pd.read_csv(uploaded_file)
-                # Sanitize column names
-                df.columns = [re.sub(r'[^a-zA-Z0-9_]', '_', str(c)).strip() for c in df.columns]
-                clean_table_name = re.sub(r'[^a-zA-Z0-9_]', '_', os.path.splitext(file_name)[0]).lower()
-                
-                db_path = os.path.join(UPLOAD_DIR, f"{clean_table_name}.db")
-                conn = sqlite3.connect(db_path)
-                df.to_sql(clean_table_name, conn, if_exists="replace", index=False)
-                conn.close()
-
-                st.session_state["active_source"] = "custom"
-                st.session_state["active_db_uri"] = f"sqlite:///{db_path}"
-                st.session_state["dataset_name"] = file_name
-                st.session_state["preview_df"] = df.head(5)
-                st.session_state["messages"].append({
-                    "role": "assistant",
-                    "content": f"✅ Successfully uploaded and parsed **{file_name}**! Created table **`{clean_table_name}`** with **{len(df):,} rows** and **{len(df.columns)} columns**. What questions would you like to explore?"
-                })
-                st.rerun()
-
-    # Reset button
-    st.markdown('<div class="sidebar-section">Controls</div>', unsafe_allow_html=True)
-    if st.button("🧹 Clear Chat History", use_container_width=True):
-        st.session_state["messages"] = [
-            {"role": "assistant", "content": f"Chat cleared. I'm connected to **{st.session_state['dataset_name']}**. How can I help you analyze this data?"}
-        ]
-        st.rerun()
-
-# 6. Initialize Database and Agent with conversational prompt
+# 5. Connect Database & Conversational Agent
 @st.cache_resource(show_spinner=False)
 def get_conversational_agent(uri: str):
     try:
         db = SQLDatabase.from_uri(uri)
         llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
         
-        prefix = """You are a helpful, conversational Business Intelligence analyst.
-You translate business questions into accurate SQL, execute them, and explain the answers clearly and conversationally.
+        prefix = """You are an expert, conversational Business Intelligence analyst.
+You have access to a structured database and a set of SQL tools.
+Your goal is to answer ANY question the user asks about the active dataset accurately, insightfully, and conversationally.
 
 IMPORTANT BEHAVIORAL INSTRUCTIONS:
-1. GREETINGS & CASUAL CONVERSATION:
-   If the user greets you ('hi', 'hello', 'hey', 'what can you do?'), greet them warmly as a friendly BI analyst. Tell them which dataset is currently active, and suggest 2 or 3 quick analytical questions they can ask. DO NOT dump table schemas or column definitions unless specifically asked.
+1. GREETINGS & CASUAL QUESTIONS:
+   If the user says 'hi', 'hello', 'who are you', or asks what you can do, greet them warmly and naturally. Mention the currently loaded dataset and suggest 2 or 3 interesting questions they can ask. Do NOT dump raw schemas or table columns unless explicitly requested.
 2. ANSWERING DATA QUESTIONS:
-   - Provide the direct, human-readable answer first with formatted numbers (e.g. $845,870.00, 10,000 orders).
-   - Offer a brief analytical observation or suggest a natural next question to explore.
-   - Always be professional, insightful, and conversational.
+   - For ANY analytical, statistical, filtering, or aggregative question: write and execute an optimized SQL query.
+   - Present the answer clearly in plain English first with neatly formatted numbers (e.g. $1,450.00, 24 orders).
+   - If relevant, provide a brief analytical takeaway or suggest a logical next step (e.g., 'Would you like to break this down by region or date?').
+3. UNSEEN DATA & SCHEMAS:
+   - You can tackle any dataset! Always check the available tables and columns using your tools, and write custom queries for whatever columns exist in the active database.
 """
         agent = create_sql_agent(
             llm=llm,
@@ -294,69 +189,135 @@ IMPORTANT BEHAVIORAL INSTRUCTIONS:
     except Exception as e:
         return None, None, str(e)
 
-db_instance, agent_instance, conn_err = get_conversational_agent(st.session_state["active_db_uri"])
-
-# Display schema in sidebar
-with st.sidebar:
-    if conn_err:
-        st.error(f"Error: {conn_err}")
-    elif db_instance:
-        table_names = db_instance.get_usable_table_names()
-        st.markdown('<div class="sidebar-section">Available Tables</div>', unsafe_allow_html=True)
-        pills = "".join([f'<span class="table-pill">{t}</span>' for t in table_names])
-        st.markdown(pills, unsafe_allow_html=True)
-        
-        with st.expander("Inspect column details", expanded=False):
-            st.code(db_instance.get_table_info()[:800], language="sql")
-
-# 7. Main Application Header & Active Dataset Banner
+# ----------------- MAIN VIEW -----------------
 st.markdown('<h1 style="font-size:24px; font-weight:600; margin-bottom:4px; color:#fafafa;">Enterprise BI Agent</h1>', unsafe_allow_html=True)
-st.markdown('<p style="font-size:14px; color:#71717a; margin-bottom:16px;">Conversational business intelligence powered by autonomous SQL reasoning.</p>', unsafe_allow_html=True)
+st.markdown('<p style="font-size:14px; color:#71717a; margin-bottom:16px;">Ask questions in plain English across the default warehouse or any custom dataset you upload.</p>', unsafe_allow_html=True)
 
-# Prominent Visual Status Banner
+# ----------------- PROMINENT DATASET MANAGER (VISIBLE ON SCREEN) -----------------
+with st.container():
+    tab_default, tab_upload = st.tabs(["🏢 Pre-Loaded Enterprise DB (10,000 Records)", "📁 Upload Custom Dataset (.csv, .sqlite, .db)"])
+
+    # TAB 1: DEFAULT ENTERPRISE DATASET
+    with tab_default:
+        col_info, col_btn = st.columns([4, 1.5])
+        with col_info:
+            is_active = (st.session_state["active_source"] == "default")
+            dot = '<span class="status-dot"></span>' if is_active else '<span style="color:#71717a;">○ </span>'
+            status_text = '<strong style="color:#ffffff;">Active Dataset: enterprise.db</strong>' if is_active else '<span style="color:#a1a1aa;">enterprise.db</span>'
+            st.markdown(f"""
+            <div style="padding-top:6px;">
+                {dot}{status_text} <span class="badge-pill">10,000 Orders</span>
+                <p style="font-size:12.5px; color:#71717a; margin:4px 0 0 0;">
+                    Scaled relational tables: <code>Customers</code> (250), <code>Products</code> (18), <code>Orders</code> (10,000).
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col_btn:
+            if not is_active:
+                if st.button("Use Enterprise DB", key="btn_use_default"):
+                    st.session_state["active_source"] = "default"
+                    st.session_state["active_db_uri"] = "sqlite:///enterprise.db"
+                    st.session_state["dataset_name"] = "enterprise.db"
+                    st.session_state["preview_df"] = None
+                    st.session_state["messages"].append({
+                        "role": "assistant",
+                        "content": "Switched back to the default **enterprise.db** (10,000 synthetic records across Customers, Products, and Orders). How can I assist you with this data?"
+                    })
+                    st.rerun()
+
+    # TAB 2: UPLOAD CUSTOM DATASET
+    with tab_upload:
+        st.markdown("**Upload any CSV or SQLite database file:**")
+        uploaded_file = st.file_uploader(
+            "Upload file",
+            type=["csv", "db", "sqlite", "sqlite3"],
+            key="direct_file_uploader",
+            label_visibility="collapsed"
+        )
+        
+        if uploaded_file is not None:
+            file_name = uploaded_file.name
+            # If new file uploaded, process immediately
+            if st.session_state.get("dataset_name") != file_name:
+                if file_name.endswith((".db", ".sqlite", ".sqlite3")):
+                    save_path = os.path.join(UPLOAD_DIR, file_name)
+                    with open(save_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+                    st.session_state["active_source"] = "custom"
+                    st.session_state["active_db_uri"] = f"sqlite:///{save_path}"
+                    st.session_state["dataset_name"] = file_name
+                    st.session_state["preview_df"] = None
+                    
+                    # Discover table names
+                    conn = sqlite3.connect(save_path)
+                    c = conn.cursor()
+                    tables = [row[0] for row in c.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()]
+                    conn.close()
+                    st.session_state["custom_table_names"] = tables
+                    
+                    st.session_state["messages"].append({
+                        "role": "assistant",
+                        "content": f"✅ **Dataset Connected:** Successfully loaded `{file_name}` with tables: {', '.join([f'`{t}`' for t in tables])}. The agent is now actively querying this custom database!"
+                    })
+                    st.rerun()
+
+                elif file_name.endswith(".csv"):
+                    df = pd.read_csv(uploaded_file)
+                    # Clean columns
+                    df.columns = [re.sub(r'[^a-zA-Z0-9_]', '_', str(c)).strip() for c in df.columns]
+                    clean_table_name = re.sub(r'[^a-zA-Z0-9_]', '_', os.path.splitext(file_name)[0]).lower()
+                    
+                    db_path = os.path.join(UPLOAD_DIR, f"{clean_table_name}.db")
+                    conn = sqlite3.connect(db_path)
+                    df.to_sql(clean_table_name, conn, if_exists="replace", index=False)
+                    conn.close()
+
+                    st.session_state["active_source"] = "custom"
+                    st.session_state["active_db_uri"] = f"sqlite:///{db_path}"
+                    st.session_state["dataset_name"] = file_name
+                    st.session_state["preview_df"] = df.head(5)
+                    st.session_state["custom_table_names"] = [clean_table_name]
+
+                    st.session_state["messages"].append({
+                        "role": "assistant",
+                        "content": f"✅ **Dataset Connected:** Successfully uploaded and parsed `{file_name}`! Created table **`{clean_table_name}`** with **{len(df):,} rows** and **{len(df.columns)} columns**. What questions would you like to explore on this data?"
+                    })
+                    st.rerun()
+
+# ----------------- VISUAL CONFIRMATION & PREVIEW BANNER -----------------
 if st.session_state["active_source"] == "custom":
     st.markdown(f"""
-    <div class="dataset-banner">
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-            <div>
-                <span class="status-dot"></span>
-                <strong style="color:#ffffff; font-size:14px;">Active Custom Dataset: {st.session_state['dataset_name']}</strong>
-                <span class="badge">Unseen Data Live</span>
-            </div>
-        </div>
-        <p style="font-size:12.5px; color:#94a3b8; margin:6px 0 0 0;">
-            The agent is querying your uploaded file in real time. Tables: {', '.join([f'<code>{t}</code>' for t in db_instance.get_usable_table_names()])}
+    <div style="background:#0f172a; border:1px solid #1e293b; border-left:4px solid #10b981; border-radius:8px; padding:12px 16px; margin-bottom:16px;">
+        <span class="status-dot"></span><strong style="color:#10b981; font-size:14px;">Active Dataset: {st.session_state['dataset_name']}</strong>
+        <span class="badge-pill">Unseen Custom Data Active</span>
+        <p style="font-size:12.5px; color:#94a3b8; margin:4px 0 0 0;">
+            All your questions below will be answered by querying this uploaded file.
         </p>
     </div>
     """, unsafe_allow_html=True)
     
     if st.session_state["preview_df"] is not None:
-        with st.expander("👁️ Preview First 5 Rows of Uploaded Data", expanded=False):
+        with st.expander("👁️ Live Data Preview (First 5 Rows)", expanded=True):
             st.dataframe(st.session_state["preview_df"], use_container_width=True)
-else:
-    st.markdown("""
-    <div class="dataset-banner">
-        <span class="status-dot"></span>
-        <strong style="color:#ffffff; font-size:13.5px;">Active Dataset: Demo Enterprise Warehouse</strong>
-        <span class="badge">10,000 Records</span>
-        <p style="font-size:12px; color:#71717a; margin:4px 0 0 0;">
-            Tables: <code>Customers</code> (250), <code>Products</code> (18), <code>Orders</code> (10,000). Upload custom files via the sidebar anytime.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
 
+# Connect to the currently active database
+db_instance, agent_instance, conn_err = get_conversational_agent(st.session_state["active_db_uri"])
+
+if conn_err:
+    st.error(f"Database connection error: {conn_err}")
+
+# ----------------- SUGGESTED QUESTIONS -----------------
 prompt_to_run = None
 
-# If chat has only initial greeting, show starter questions
 if len(st.session_state["messages"]) <= 1:
-    st.markdown('<div class="sidebar-section" style="margin-top:0;">Suggested Questions</div>', unsafe_allow_html=True)
+    st.markdown('<p style="font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:#71717a; margin-bottom:8px;">Suggested Questions</p>', unsafe_allow_html=True)
     
     if st.session_state["active_source"] == "default":
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Top 3 customers by total spend", use_container_width=True):
                 prompt_to_run = "Can you list the top 3 customers by their total spend, and include their customer segment?"
-            if st.button("Top 5 best-selling products by quantity", use_container_width=True):
+            if st.button("Top 5 best-selling products by volume", use_container_width=True):
                 prompt_to_run = "What are the top 5 most popular products by total quantity ordered?"
         with col2:
             if st.button("Highest revenue product category", use_container_width=True):
@@ -364,18 +325,18 @@ if len(st.session_state["messages"]) <= 1:
             if st.button("Order volume comparison: 2025 vs 2026", use_container_width=True):
                 prompt_to_run = "How many total orders were placed in 2025 compared to 2026?"
     else:
-        # Dynamic starter queries for custom data
-        col1, col2 = st.columns(2)
-        tables = db_instance.get_usable_table_names()
+        # Dynamic suggestions for custom uploaded data
+        tables = st.session_state.get("custom_table_names", ["data"])
         t0 = tables[0] if tables else "data"
+        col1, col2 = st.columns(2)
         with col1:
             if st.button(f"How many total rows are in {t0}?", use_container_width=True):
                 prompt_to_run = f"How many total rows are in the {t0} table?"
         with col2:
             if st.button(f"Summarize the key metrics of {t0}", use_container_width=True):
-                prompt_to_run = f"Provide a summary breakdown of the main numerical columns and categories in {t0}."
+                prompt_to_run = f"Provide a breakdown of the key metrics and columns in {t0}."
 
-# Render conversation history
+# ----------------- CHAT CONVERSATION HISTORY -----------------
 for msg in st.session_state["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -383,31 +344,31 @@ for msg in st.session_state["messages"]:
             with st.expander("View generated SQL query", expanded=False):
                 st.code(msg["sql"], language="sql")
 
-# Chat input bar
-user_query = st.chat_input("Ask a business question or say hello...")
+# Chat input bar at bottom
+user_query = st.chat_input("Ask any question about your data or say hello...")
 if user_query:
     prompt_to_run = user_query
 
-# 8. Conversational Execution
+# ----------------- QUERY EXECUTION -----------------
 if prompt_to_run:
     if not os.environ.get("OPENAI_API_KEY"):
-        st.error("Please provide an OpenAI API key in the sidebar.")
+        st.error("OpenAI API key is missing. Add it to .env or environment.")
     elif not agent_instance:
         st.error("No active database connection found.")
     else:
-        # Display user message
+        # 1. Render user message
         st.session_state["messages"].append({"role": "user", "content": prompt_to_run})
         with st.chat_message("user"):
             st.markdown(prompt_to_run)
 
-        # Assistant turn
+        # 2. Assistant execution
         with st.chat_message("assistant"):
             handler = SQLInspectorHandler()
-            with st.spinner("Analyzing data..."):
-                # Pass recent conversation context (last 3 messages) for natural follow-ups
+            with st.spinner("Analyzing data and generating answer..."):
+                # Multi-turn conversation context (last 3 messages) for natural follow-ups
                 if len(st.session_state["messages"]) > 2:
-                    recent_history = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in st.session_state["messages"][-4:-1]])
-                    full_input = f"Previous conversation context:\n{recent_history}\n\nCurrent user question: {prompt_to_run}"
+                    recent_context = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in st.session_state["messages"][-4:-1]])
+                    full_input = f"Previous conversation context:\n{recent_context}\n\nCurrent user question: {prompt_to_run}"
                 else:
                     full_input = prompt_to_run
 
@@ -418,7 +379,7 @@ if prompt_to_run:
                     )
                     answer = res["output"]
                 except Exception as e:
-                    answer = f"I ran into an issue while querying the database: `{str(e)}`"
+                    answer = f"I ran into an issue while analyzing the data: `{str(e)}`"
 
             st.markdown(answer)
             executed_sql = "\n\n".join(handler.sql_queries) if handler.sql_queries else None
@@ -426,7 +387,7 @@ if prompt_to_run:
                 with st.expander("View generated SQL query", expanded=False):
                     st.code(executed_sql, language="sql")
 
-            # Persist assistant message
+            # Persist assistant turn
             st.session_state["messages"].append({
                 "role": "assistant",
                 "content": answer,
