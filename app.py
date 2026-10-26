@@ -198,12 +198,29 @@ if "messages" not in st.session_state:
         {"role": "assistant", "content": "Hello! I am your AI Business Intelligence analyst. I can answer any question about your data—calculating aggregations, discovering trends, or finding specific records. You can explore the pre-loaded 10,000 enterprise orders below, or upload your own CSV or SQLite file at the top!"}
     ]
 
+# Resolve API Key from multiple sources (Environment, Streamlit Secrets, Session State)
+api_key = os.environ.get("OPENAI_API_KEY", "")
+
+if not api_key:
+    try:
+        if "OPENAI_API_KEY" in st.secrets:
+            api_key = str(st.secrets["OPENAI_API_KEY"]).strip()
+            os.environ["OPENAI_API_KEY"] = api_key
+    except Exception:
+        pass
+
+if not api_key and st.session_state.get("user_api_key"):
+    api_key = st.session_state["user_api_key"]
+    os.environ["OPENAI_API_KEY"] = api_key
+
 # 5. Connect Database & Conversational Agent
 @st.cache_resource(show_spinner=False)
-def get_conversational_agent(uri: str):
+def get_conversational_agent(uri: str, key: str):
+    if not key:
+        return None, None, "API_KEY_REQUIRED"
     try:
         db = SQLDatabase.from_uri(uri)
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, api_key=key)
         
         prefix = """You are an expert, conversational Business Intelligence analyst.
 You have access to a structured database and a set of SQL tools.
@@ -377,9 +394,27 @@ if st.session_state["active_source"] == "custom":
             st.dataframe(st.session_state["preview_df"], use_container_width=True)
 
 # Connect to the currently active database
-db_instance, agent_instance, conn_err = get_conversational_agent(st.session_state["active_db_uri"])
+db_instance, agent_instance, conn_err = get_conversational_agent(st.session_state["active_db_uri"], api_key)
 
-if conn_err:
+if not api_key or conn_err == "API_KEY_REQUIRED":
+    st.markdown("""
+    <div style="background:#1c1917; border:1px solid #78350f; border-left:4px solid #f59e0b; border-radius:8px; padding:14px 16px; margin-bottom:18px;">
+        <strong style="color:#fbbf24; font-size:14px;">🔑 OpenAI API Key Required</strong>
+        <p style="font-size:12.5px; color:#d6d3d1; margin:4px 0 10px 0;">
+            Please enter your OpenAI API key below (or configure <code>OPENAI_API_KEY</code> in Streamlit Cloud Secrets) to activate the agent.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    col_k1, col_k2 = st.columns([4, 1.2])
+    with col_k1:
+        key_input = st.text_input("OpenAI API Key", type="password", placeholder="Paste sk-proj-... here", label_visibility="collapsed")
+    with col_k2:
+        if st.button("Activate Agent", use_container_width=True):
+            if key_input:
+                st.session_state["user_api_key"] = key_input.strip()
+                os.environ["OPENAI_API_KEY"] = key_input.strip()
+                st.rerun()
+elif conn_err:
     st.error(f"Database connection error: {conn_err}")
 
 # ----------------- SUGGESTED QUESTIONS -----------------
@@ -450,8 +485,8 @@ if user_query:
 
 # ----------------- QUERY EXECUTION -----------------
 if prompt_to_run:
-    if not os.environ.get("OPENAI_API_KEY"):
-        st.error("OpenAI API key is missing. Add it to .env or environment.")
+    if not api_key:
+        st.error("OpenAI API key is missing. Please enter your API key in the box above.")
     elif not agent_instance:
         st.error("No active database connection found.")
     else:
